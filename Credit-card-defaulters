@@ -1,0 +1,380 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[ ]:
+
+
+.3+
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.utils import resample 
+from imblearn.over_sampling import SMOTE
+
+
+# In[ ]:
+
+
+df = pd.read_csv('ttt.csv')
+df.head()
+
+
+# # New Section
+
+# In[ ]:
+
+
+df.SEX.unique()
+
+
+# In[ ]:
+
+
+df.info()
+
+
+# In[ ]:
+
+
+df['default.payment.next.month'].value_counts()
+
+
+# In[ ]:
+
+
+df.describe()
+
+
+# In[ ]:
+
+
+df.hist(figsize=(20,20), bins=20);
+
+
+# In[ ]:
+
+
+plt.figure(figsize=(20,20))
+sns.heatmap(df.corr(), annot=True);
+
+
+# In[ ]:
+
+
+plt.figure(figsize=(25,12))
+sns.countplot(data=df, x='AGE', hue='default.payment.next.month');
+
+
+# In[ ]:
+
+
+plt.figure(figsize=(20,20))
+plt.subplot(311)
+sns.countplot(data=df, x='EDUCATION', hue='default.payment.next.month');
+plt.subplot(312)
+sns.countplot(data=df, x='MARRIAGE', hue='default.payment.next.month');
+plt.subplot(313)
+sns.countplot(data=df, x='SEX', hue='default.payment.next.month');
+
+
+# In[ ]:
+
+
+
+
+
+# # Most defaulters lie in Education 1=graduate school, 2=university
+# # Most defaulters in Marrige are 1=married & 2=single
+# # There are more female defaulters as compared to male but there are also more female customes paying the bills on time
+# # Most defaulters belong to age group of 23 to 30 years and there is also increses after 34 to 38 years band
+
+# In[ ]:
+
+
+axs = 1
+for i in ['MARRIAGE', 'SEX', 'EDUCATION']:
+    plt.figure(figsize=(25,25))
+    plt.subplot(3,2,axs)
+    sns.boxplot(data=df, y='LIMIT_BAL', x=i)
+    plt.title(i + ' vs LIMIT_BAL (with Outlaiers)')
+    
+    plt.subplot(3,2,axs+1)
+    sns.boxplot(data=df, y='LIMIT_BAL', x=i, showfliers=False)
+    plt.title(i + ' vs LIMIT_BAL (with Outlaiers disabled)')
+    axs += 2
+
+plt.show()
+
+
+# # MARRIGE: married customers are having more credit limit
+# # Gender don't seem to have much impact on credit limit
+# # Customers with EDUCATED (1) and OTHERS (4) class are having higher credit limit
+
+# In[ ]:
+
+
+df.EDUCATION.unique()
+
+
+# # Since category 5 and 6 in EDUCATION are unknown and category 4 is other we can just concat them to the same category and we don't know what category 0 is
+
+# In[ ]:
+
+
+df['EDUCATION'] = df['EDUCATION'].replace([0,5,6], 4)
+df['EDUCATION'].unique()
+
+
+# In[ ]:
+
+
+df.MARRIAGE.unique()
+
+
+# In[ ]:
+
+
+df.MARRIAGE = df.MARRIAGE.replace([0,3],3)
+df.MARRIAGE.unique()
+
+
+# In[ ]:
+
+
+X = pd.get_dummies(data=df, columns=['SEX', 'MARRIAGE', 'EDUCATION'])
+# X = X.drop('default payment next month', axis=1, inplace=True)
+y = df['default.payment.next.month']
+X.drop('default.payment.next.month', axis=1, inplace=True)
+X
+
+
+# In[ ]:
+
+
+df.PAY_0.unique()
+# '-1' is paid duly, but there are "-2" and "0" labels in payment status variable. So let's combine them and put everything as "0"
+fil = (df.PAY_0 == -2) | (df.PAY_0 == -1) | (df.PAY_0 == 0)
+df.loc[fil, 'PAY_0'] = 0
+fil = (df.PAY_2 == -2) | (df.PAY_2 == -1) | (df.PAY_2 == 0)
+df.loc[fil, 'PAY_2'] = 0
+fil = (df.PAY_3 == -2) | (df.PAY_3 == -1) | (df.PAY_3 == 0)
+df.loc[fil, 'PAY_3'] = 0
+fil = (df.PAY_4 == -2) | (df.PAY_4 == -1) | (df.PAY_4 == 0)
+df.loc[fil, 'PAY_4'] = 0
+fil = (df.PAY_5 == -2) | (df.PAY_5 == -1) | (df.PAY_5 == 0)
+df.loc[fil, 'PAY_5'] = 0
+fil = (df.PAY_6 == -2) | (df.PAY_6 == -1) | (df.PAY_6 == 0)
+df.loc[fil, 'PAY_6'] = 0
+
+
+# In[ ]:
+
+
+#split the data
+from sklearn.model_selection import train_test_split
+xtrain, xtest, ytrain, ytest = train_test_split(X, y, test_size=0.3, stratify=y, random_state=42)
+
+
+# In[ ]:
+
+
+xtrain.index
+
+
+# In[ ]:
+
+
+# Let's recombine xtrain and ytrain to create training_df
+df_train = xtrain.join(ytrain, how='left', lsuffix='_left')
+
+
+# In[ ]:
+
+
+df_train['default.payment.next.month'].value_counts()
+
+
+# # OHHH!!! this indicates our dataset is highly imbalanced So there are many ways to resampling! Resampling involves creating a new transformed version of the training dataset in which the selected examples have a different class distribution. This is a simple and effective strategy for imbalanced classification problems. The simplest strategy is to choose examples for the transformed dataset randomly, called random resampling. There are two main approaches to random resampling for imbalanced classification; they are oversampling and undersampling.
+# 
+# # Random Oversampling: Randomly duplicate examples in the minority class.
+# # Random Undersampling: Randomly delete examples in the majority class.
+# # SMOTE: Synthetic Minority Oversampling Technique¶
+
+# In[ ]:
+
+
+# Separate majority and minority classes
+df_majority = df_train[df_train['default.payment.next.month'] == 0]
+df_minority = df_train[df_train['default.payment.next.month'] == 1]
+
+
+# In[ ]:
+
+
+# Downsample majority class
+df_majority_downsampled = resample(df_majority, 
+                                 replace=False,    # sample without replacement
+                                 n_samples=4645,     # to match minority class
+                                 random_state=5)
+
+
+# In[ ]:
+
+
+# Combine minority class with downsampled majority class
+df_downsampled = pd.concat([df_majority_downsampled, df_minority])
+# Display new class counts
+df_downsampled['default.payment.next.month'].value_counts()
+
+
+# In[ ]:
+
+
+
+
+
+# SMOTE: Synthetic Minority Oversampling Technique SMOTE works by selecting examples that are close in the feature space, drawing a line between the examples in the feature space and drawing a new sample at a point along that line. To create a syntetic sample I want to use the SMOTE algorithm, which is an oversampling method which creates syntetic samples from the minority class instead of creating copies. It selects 2 or more similar instances and perturb them one at a time by random amount. This techniques should avoid overfitting problems but it risks adding noise to the model
+
+# In[ ]:
+
+
+smt = SMOTE(random_state=0)
+X_SMOTE, y_SMOTE = smt.fit_resample(xtrain, ytrain)
+print(len(y_SMOTE))
+print(y_SMOTE.sum())
+
+
+# In[ ]:
+
+
+
+
+
+# In this example we will take smote training dataset for the training
+# 
+# Model Building:
+# I will be using the following algorithms and then will use hyperparameter tuning for the best model
+# 
+# Logistic Regression
+# Naive Bayes
+# K-Nearest Neighbours
+# Decision Tree
+# Random Forest
+# AdaBoost Classifier
+# GradientBoosting Classifier
+# XGBoost Classifier
+
+# In[ ]:
+
+
+from sklearn.linear_model import LogisticRegression
+LR = LogisticRegression()
+LR.fit(X_SMOTE, y_SMOTE)
+LR.score(xtest, ytest)
+
+
+# In[ ]:
+
+
+from sklearn.model_selection import RandomizedSearchCV
+
+grid ={'penalty' : ['l1', 'l2'],
+      'C': np.logspace(-5, 8, 15)}
+RSCV = RandomizedSearchCV(LR, grid, scoring = 'roc_auc', cv=5, random_state=0)
+RSCV.fit(X_SMOTE, y_SMOTE)
+
+
+# In[ ]:
+
+
+RSCV.best_params_
+
+
+# In[ ]:
+
+
+LR = LogisticRegression(penalty ='l2', C = 268.2695795279727 )
+LR.fit(X_SMOTE, y_SMOTE)
+LR.score(xtest, ytest)
+
+
+# In[ ]:
+
+
+from sklearn.tree import DecisionTreeClassifier
+from scipy.stats import randint
+DT = DecisionTreeClassifier()
+param = {"max_depth": [3, None],
+              "max_features": randint(1, 9),
+              "min_samples_leaf": randint(1, 9),
+              "criterion": ["gini", "entropy"]}
+RSCV = RandomizedSearchCV(DT, param, cv = 5, scoring = 'roc_auc',n_jobs = -1)
+RSCV.fit(X_SMOTE, y_SMOTE)
+
+
+# In[ ]:
+
+
+RSCV.best_params_
+
+
+# In[ ]:
+
+
+DT = DecisionTreeClassifier(criterion = 'entropy',max_depth =None, max_features = 8, min_samples_leaf=8 )
+DT.fit(X_SMOTE, y_SMOTE)
+DT.score(xtest, ytest)
+
+
+# Random Forest
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+from sklearn.ensemble import RandomForestClassifier
+from scipy.stats import randint
+RF = RandomForestClassifier()
+params = {'n_estimators' : randint(50,70),
+              'max_features' : randint(1,20),'max_depth': randint(2,10),
+             'criterion':['gini','entropy']}
+RSCV = RandomizedSearchCV(DT, param, cv = 5, scoring = 'roc_auc',n_jobs = -1)
+RSCV.fit(X_SMOTE, y_SMOTE)
+
+
+# In[ ]:
+
+
+RSCV.best_params_
+
+
+# In[ ]:
+
+
+RF = RandomForestClassifier(criterion = 'entropy',
+                           max_depth =None,
+                           max_features = 7,
+                           min_samples_leaf =8)
+RF.fit(X_SMOTE, y_SMOTE)
+RF.score(xtest, ytest)
+
+
+# In[ ]:
+
+
+from sklearn.metrics import plot_roc_curve
+
+classifiers = [LR, DT, RF]
+ax = plt.gca()
+for i in classifiers:
+    plot_roc_curve(i, xtest, ytest, ax=ax)
+
+
+# In[ ]:
